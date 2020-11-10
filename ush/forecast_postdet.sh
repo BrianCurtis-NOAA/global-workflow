@@ -66,26 +66,26 @@ FV3_GFS_postdet(){
 	  if [ $RERUN = "NO" ]; then
 	#.............................
 
-	  # Link all (except sfc_data) restart files from $gmemdir
-	  for file in $gmemdir/RESTART/${PDY}.${cyc}0000.*.nc; do
-	    file2=$(echo $(basename $file))
-	    file2=$(echo $file2 | cut -d. -f3-) # remove the date from file
-	    fsuf=$(echo $file2 | cut -d. -f1)
-	    if [ $fsuf != "sfc_data" ]; then
-	       $NLN $file $DATA/INPUT/$file2
-	    fi
-	  done
-
-	  # Link sfcanl_data restart files from $memdir
-	  for file in $memdir/RESTART/${PDY}.${cyc}0000.*.nc; do
-	    file2=$(echo $(basename $file))
-	    file2=$(echo $file2 | cut -d. -f3-) # remove the date from file
-	    fsufanl=$(echo $file2 | cut -d. -f1)
-	    if [ $fsufanl = "sfcanl_data" ]; then
-	      file2=$(echo $file2 | sed -e "s/sfcanl_data/sfc_data/g")
-	      $NLN $file $DATA/INPUT/$file2
-	    fi
-	  done
+        # Link all (except sfc_data) restart files from $gmemdir
+          for file in $(ls $gmemdir/RESTART/${sPDY}.${scyc}0000.*.nc); do
+            file2=$(echo $(basename $file))
+            file2=$(echo $file2 | cut -d. -f3-) # remove the date from file
+            fsuf=$(echo $file2 | cut -d. -f1)
+            if [ $fsuf != "sfc_data" ]; then
+               $NLN $file $DATA/INPUT/$file2
+            fi
+          done
+      
+        # Link sfcanl_data restart files from $memdir
+          for file in $(ls $memdir/RESTART/${sPDY}.${scyc}0000.*.nc); do
+            file2=$(echo $(basename $file))
+            file2=$(echo $file2 | cut -d. -f3-) # remove the date from file
+            fsufanl=$(echo $file2 | cut -d. -f1)
+            if [ $fsufanl = "sfcanl_data" ]; then
+              file2=$(echo $file2 | sed -e "s/sfcanl_data/sfc_data/g")
+              $NLN $file $DATA/INPUT/$file2
+            fi
+          done
 
           # Need a coupler.res when doing IAU
           if [ $DOIAU = "YES" ]; then
@@ -102,9 +102,9 @@ EOF
             for i in $(echo $IAUFHRS | sed "s/,/ /g" | rev); do
                incfhr=$(printf %03i $i)
                if [ $incfhr = "006" ]; then
-                 increment_file=$memdir/${CDUMP}.t${cyc}z.atminc.nc
+                 increment_file=$memdir/${CDUMP}.t${cyc}z.${PREFIX_ATMINC}atminc.nc
                else
-                 increment_file=$memdir/${CDUMP}.t${cyc}z.atmi${incfhr}.nc
+                 increment_file=$memdir/${CDUMP}.t${cyc}z.${PREFIX_ATMINC}atmi${incfhr}.nc
                fi
                if [ ! -f $increment_file ]; then
                  echo "ERROR: DOIAU = $DOIAU, but missing increment file for fhr $incfhr at $increment_file"
@@ -117,7 +117,7 @@ EOF
             read_increment=".false."
             res_latlon_dynamics=""
           else
-	    increment_file=$memdir/${CDUMP}.t${cyc}z.atminc.nc
+	    increment_file=$memdir/${CDUMP}.t${cyc}z.${PREFIX_INC}atminc.nc
 	    if [ -f $increment_file ]; then
 	       $NLN $increment_file $DATA/INPUT/fv3_increment.nc
 	       read_increment=".true."
@@ -131,11 +131,19 @@ EOF
 	    export warm_start=".true."
 	    PDYT=$(echo $CDATE_RST | cut -c1-8)
 	    cyct=$(echo $CDATE_RST | cut -c9-10)
-	    for file in $RSTDIR_TMP/${PDYT}.${cyct}0000.*; do
+	    for file in $(ls $RSTDIR_ATM/${PDYT}.${cyct}0000.*); do
 	      file2=$(echo $(basename $file))
 	      file2=$(echo $file2 | cut -d. -f3-)
 	      $NLN $file $DATA/INPUT/$file2
 	    done
+
+            hour_rst=`$NHOUR $CDATE_RST $CDATE`
+            IAU_FHROT=$((IAU_OFFSET+hour_rst))
+            if [ $DOIAU = "YES" ]; then
+              IAUFHRS=-1
+              IAU_DELTHRS=0
+              IAU_INC_FILES="''"
+            fi
 
 	  fi
 	#.............................
@@ -230,6 +238,14 @@ EOF
 	    $NLN $file $DATA/$(echo $(basename $file) | sed -e "s/global_//g")
 	  done
 	fi
+
+        # inline post fix files
+        if [ $WRITE_DOPOST = ".true." ]; then
+            $NLN $PARM_POST/post_tag_gfs${LEVS}             $DATA/itag
+            $NLN $PARM_POST/postxconfig-NT-GFS-TWO.txt      $DATA/postxconfig-NT.txt
+            $NLN $PARM_POST/postxconfig-NT-GFS-F00-TWO.txt  $DATA/postxconfig-NT_FH00.txt
+            $NLN $PARM_POST/params_grib2_tbl_new            $DATA/params_grib2_tbl_new
+        fi
 
 	#------------------------------------------------------------------
 	# changeable parameters
@@ -505,6 +521,10 @@ echo "SUB ${FUNCNAME[0]}: Output data for FV3 copied"
 WW3_postdet()
 {
   echo "SUB ${FUNCNAME[0]}: Linking input data for WW3"
+  for file in $(ls $COMINwave/rundata/rmp_src_to_dst_conserv_*) ; do
+    $NLN $file $DATA/
+  done
+  $NLN $COMINwave/rundata/ww3_multi.${CDUMPwave}${WAV_MEMBER}.${cycle}.inp $DATA/ww3_multi.inp
   COMPONENTwave=${COMPONENTwave:-${RUN}wave}
 
   #Link mod_def files for wave grids 
@@ -512,21 +532,55 @@ WW3_postdet()
   echo "Wave Grids: $WAVECUR_FID $WAVEICE_FID $WAVEWND_FID $waveuoutpGRD $waveGRD $waveesmfGRD $wavesbsGRD $wavepostGRD $waveinterpGRD"
   grdALL=`printf "%s\n" "${array[@]}" | sort -u | tr '\n' ' '`
   for wavGRD in ${grdALL}; do
-    $NCP $ROTDIR/${COMPONENTwave}.${PDY}/${cyc}/rundata/${COMPONENTwave}.mod_def.$wavGRD $DATA/mod_def.$wavGRD
+    $NLN $COMINwave/rundata/${CDUMPwave}.mod_def.$wavGRD $DATA/mod_def.$wavGRD
   done
+
+  export WAVHCYC=${WAVHCYC:-6}
+  export WRDATE=`$NDATE -${WAVHCYC} $CDATE`
+  export WRPDY=`echo $WRDATE | cut -c1-8`
+  export WRcyc=`echo $WRDATE | cut -c9-10`
+  export WRDIR=${ROTDIR}/${CDUMPRSTwave}.${WRPDY}/${WRcyc}/wave/restart
+  export datwave=$COMOUTwave/rundata
+  export wavprfx=${CDUMPwave}${WAV_MEMBER}
 
   #Copy initial condition files: 
   for wavGRD in $waveGRD ; do
-    # Link wave IC for current cycle
-    # $NLN ${WRDIR}/${sPDY}.${scyc}0000.restart.${wavGRD} $DATA/restart.${wavGRD}
-    # Link IC for S2S benchmarks: 
-    $NCP -pf $ICSDIR/$CDATE/wav/${PDY}.${cyc}0000.restart.$wavGRD $DATA/restart.$wavGRD
-    # Link log files for computational grids: 
-    eval $NLN  $ROTDIR/${COMPONENTwave}.${PDY}/${cyc}/rundata/${COMPONENTwave}${WAV_MEMBER}.log.${wavGRD}.${PDY}${cyc} $DATA/log.${wavGRD}
+    if [ $RERUN = "NO" ]; then
+      if [ ! -f ${WRDIR}/${sPDY}.${scyc}0000.restart.${wavGRD} ]; then
+        echo "WARNING: NON-FATAL ERROR wave IC is missing, will start from rest"
+      fi
+      $NLN ${WRDIR}/${sPDY}.${scyc}0000.restart.${wavGRD} $DATA/restart.${wavGRD}
+    else
+      if [ ! -f ${RSTDIR_WAVE}/${PDYT}.${cyct}0000.restart.${wavGRD} ]; then
+        echo "WARNING: NON-FATAL ERROR wave IC is missing, will start from rest"
+      fi
+      $NLN ${RSTDIR_WAVE}/${PDYT}.${cyct}0000.restart.${wavGRD} $DATA/restart.${wavGRD}
+    fi
+    eval $NLN $datwave/${wavprfx}.log.${wavGRD}.${PDY}${cyc} log.${wavGRD}
   done
 
-  #link more log files: 
-  eval $NLN $ROTDIR/${COMPONENTwave}.${PDY}/${cyc}/rundata/${COMPONENTwave}${WAV_MEMBER}.log.mww3.${PDY}${cyc} $DATA/log.mww3
+  if [ "$WW3ICEINP" = "YES" ]; then
+    wavicefile=$COMINwave/rundata/${CDUMPwave}.${WAVEICE_FID}.${cycle}.ice
+    if [ ! -f $wavicefile ]; then
+      echo "ERROR: WW3ICEINP = ${WW3ICEINP}, but missing ice file"
+      echo "Abort!"
+      exit 1
+    fi
+    $NLN ${wavicefile} $DATA/ice.${WAVEICE_FID}
+  fi
+
+  if [ "$WW3CURINP" = "YES" ]; then
+    wavcurfile=$COMINwave/rundata/${CDUMPwave}.${WAVECUR_FID}.${cycle}.cur
+    if [ ! -f $wavcurfile ]; then
+      echo "ERROR: WW3CURINP = ${WW3CURINP}, but missing current file"
+      echo "Abort!"
+      exit 1
+    fi
+    $NLN $wavcurfile $DATA/current.${WAVECUR_FID}
+  fi
+
+  # Link output files
+  eval $NLN $datwave/${wavprfx}.log.mww3.${PDY}${cyc} $DATA/log.mww3
 
   datwave=$ROTDIR/${COMPONENTwave}.${PDY}/${cyc}/rundata
   wavprfx=${COMPONENTwave}${WAV_MEMBER}
@@ -540,11 +594,12 @@ WW3_postdet()
         eval $NLN $datwave/${wavprfx}.out_grd.${wavGRD}.${YMD}.${HMS} $DATA/${YMD}.${HMS}.out_grd.${wavGRD}
       done
       FHINC=$FHOUT_WAV
-      #if [ $FHMAX_HF_WAV -gt 0 -a $FHOUT_HF_WAV -gt 0 -a $fhr -lt $FHMAX_HF_WAV ]; then
-      #  FHINC=$FHOUT_HF_WAV
-      #fi
+      if [ $FHMAX_HF_WAV -gt 0 -a $FHOUT_HF_WAV -gt 0 -a $fhr -lt $FHMAX_HF_WAV ]; then
+        FHINC=$FHOUT_HF_WAV
+      fi
     fhr=$((fhr+FHINC))
   done
+
   # Loop for point output (uses DTPNT)
   fhr=$FHMIN_WAV
   while [ $fhr -le $FHMAX_WAV ]; do
@@ -555,8 +610,6 @@ WW3_postdet()
       FHINC=$FHINCP_WAV
     fhr=$((fhr+FHINC))
   done
-
-
 
 }
 

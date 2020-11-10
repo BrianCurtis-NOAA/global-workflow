@@ -18,6 +18,7 @@ FV3_GFS_det(){
 	warm_start=${warm_start:-".false."}
 	read_increment=${read_increment:-".false."}
 	restart_interval=${restart_interval:-0}
+        rst_invt1=`echo $restart_interval |cut -d " " -f 1`
         res_latlon_dynamics="''"
 
         # Determine if this is a warm start or cold start
@@ -26,17 +27,17 @@ FV3_GFS_det(){
 	fi
 
         # turn IAU off for cold start
-        DOIAU_coldstart="NO"
-        if [ $DOIAU = "YES" -a $warm_start = ".false." ]; then
+        DOIAU_coldstart=${DOIAU_coldstart:-"NO"}
+        if [ $DOIAU = "YES" -a $warm_start = ".false." ] || [ $DOIAU_coldstart = "YES" -a $warm_start = ".true." ]; then
           export DOIAU="NO"
-          echo "turning off IAU since warm_start = $warm_start"
+          echo "turning off IAU"
           DOIAU_coldstart="YES"
+          IAU_OFFSET=0
           sCDATE=$CDATE
           sPDY=$PDY
           scyc=$cyc
-          #echo "ERROR: DOIAU = $DOIAU and warm_start = $warm_start are incompatible."
-          #echo "Abort!"
-          #exit 99
+          tPDY=$sPDY
+          tcyc=$cyc
         fi
 
 	#-------------------------------------------------------
